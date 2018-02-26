@@ -1,0 +1,8 @@
+Background:
+    BAMCP is about tree search in bayes adaptive MDPs, has a nice summary of what BAMDPs are. 
+    POMCP is about tree search in POMDPs. Not 100% sure it's relevant for us, but it might be.
+    mcrave and cRAVE are about improvements to MCTS
+
+UCTtoCNN is about using UCT runs in Atari as training data for a CNN. Does better than DQN.
+MCTS_ContinuousActionSpace is about using execution uncertainty to generalize across actions in the tree. Assumes the dynamics are known, though.
+Haven't read the rest.
