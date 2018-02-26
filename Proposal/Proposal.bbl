@@ -1,0 +1,21 @@
+\begin{thebibliography}{SLMP17}
+
+\bibitem[MP17]{DBLP:journals/corr/abs-1710-11040}
+Anirudha Majumdar and Marco Pavone.
+\newblock {H}ow {S}hould a {R}obot {A}ssess {R}isk? {T}owards an {A}xiomatic
+  {T}heory of {R}isk in {R}obotics.
+\newblock {\em CoRR}, abs/1710.11040, 2017.
+
+\bibitem[SK17]{DBLP:journals/corr/abs-1709-06196}
+Zachary Sunberg and Mykel~J. Kochenderfer.
+\newblock {POMCPOW:} an online algorithm for {P}{O}{M}{D}{P}s with continuous
+  state, action, and observation spaces.
+\newblock {\em CoRR}, abs/1709.06196, 2017.
+
+\bibitem[SLMP17]{DBLP:journals/corr/abs-1711-10055}
+Sumeet Singh, Jonathan Lacotte, Anirudha Majumdar, and Marco Pavone.
+\newblock {R}isk-sensitive {I}nverse {R}einforcement {L}earning via {S}emi- and
+  {N}on-{P}arametric {M}ethods.
+\newblock {\em CoRR}, abs/1711.10055, 2017.
+
+\end{thebibliography}
