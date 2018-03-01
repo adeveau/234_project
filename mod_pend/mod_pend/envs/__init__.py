@@ -1,1 +1,1 @@
-from mod_pend.envs.mod_pend import ModPendulumEnv
+from mod_pend.envs.mod_pend_env import ModPendulumEnv
