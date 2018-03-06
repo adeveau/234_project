@@ -22,10 +22,11 @@ class ActionNode(object):
         self.children = [None]*nS
 
 class BAFA(object):
-    def __init__(self, prior, env, nS, nA, max_depth = 10, gamma = .9, s0 = 0, epsilon = .1):
+    def __init__(self, prior, env, nS, nA, max_depth = 10, gamma = .9, s0 = 0, epsilon = .1, lr = .01):
         self.gamma = gamma
         self.nS = nS
         self.nA = nA
+        self.lr = lr
 
         self.prior = []
         self.envs = []
@@ -47,8 +48,8 @@ class BAFA(object):
     def search(self, node, max_iter):
         for x in xrange(max_iter):
             self.n_iter += 1
-            idx = np.random.choice(range(len(self.b_adv_cur)), p = self.b_adv_cur, size = 1)
-            r = self.simulate(self, node, idx)
+            idx = np.random.choice(range(len(self.b_adv_cur)), p = self.b_adv_cur, size = 1)[0]
+            r = self.simulate(node, idx)
             self.V[idx] += (r - self.V[idx])/self.n_iter
             self.update_b_adv()
 
@@ -57,9 +58,9 @@ class BAFA(object):
             return 0
 
         if np.random.random() < self.epsilon:
-            cur_action = np.random.choice(range(self.nA))
+            action = np.random.choice(range(self.nA))
         else:
-            cur_action = np.argmax(node.action_values)
+            action = np.argmax(node.action_values)
 
         cur_env = self.envs[idx]
 
@@ -79,12 +80,11 @@ class BAFA(object):
         R = reward + self.gamma*self.simulate(node.children[action].children[state], idx)
 
         ##Using one-hot encoding x(s,a)_{s', a'} from HW2
-        node.action_values[cur_action]= node.action_values[cur_action] - self.lr*(node.action_values[cur_action] - R)
+        node.action_values[action]= node.action_values[action] - self.lr*(node.action_values[action] - R)
         return R
 
     def update_b_adv(self):
         self.b_adv_cur = optimize.linprog(self.V, A_eq = np.ones((1, len(self.prior))), b_eq = np.array([1])).x
-        self.b_adv_cur[-1] = 1. - self.b_adv_cur[:-1].sum()
         self.b_adv_avg += (self.b_adv_cur - self.b_adv_avg)/self.n_iter 
 
     def run(self, max_iter):
@@ -92,9 +92,9 @@ class BAFA(object):
 
 if __name__ == "__main__":
     print "working"
-    r = BAFA([({'slip' : 1}, 1./2), ({'slip' : 0}, 1./1)], toy_text.NChainEnv, nS = 5, nA = 2, max_depth = 4, gamma = 1)
+    r = BAFA([({'slip' : 1}, 1./2), ({'slip' : 0}, 1./2)], toy_text.NChainEnv, nS = 5, nA = 2, max_depth = 1, gamma = 1)
     st = time.time()
-    r.run(10)
+    r.run(10000)
     print "Runtime: {}".format(time.time() - st)
     print "V: {}".format(r.V)
     print "Adversarial distribution: {}".format(r.b_adv_avg)
