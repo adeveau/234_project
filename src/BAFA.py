@@ -53,6 +53,7 @@ class BAFA(object):
                 r = self.simulate(node, idx)
                 self.V[idx] += (r - self.V[idx])/float(self.n_iter)
             self.update_b_adv()
+            self.epsilon *= .99
 
     def simulate(self, node, idx):
         if node.depth > self.max_depth:
@@ -72,13 +73,7 @@ class BAFA(object):
 
         w = len(self.envs)*self.b_adv_cur[idx]
 
-        if node.children[action] is None:
-            node.children[action] = ActionNode(self.nS)
-            node.children[action].children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1)
-        else:
-            act = node.children[action]
-            if act.children[state] is None:
-                act.children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1)    
+        self.add_nodes(node, state, action)
 
         R = reward + self.gamma*self.simulate(node.children[action].children[state], idx)
 
@@ -93,26 +88,37 @@ class BAFA(object):
     def run(self, max_iter):
         self.search(self.root, max_iter)
 
-    def mc_rollout(self, node, idx):
+    def greedy_rollout(self, node, idx):
         cur_env = self.envs[idx]
         cur_env.state = node.tail
         total_reward = 0
         discount = 1
         done = False
-        while not done and node.depth < self.max_depth:
+        while not done and node.depth < self.max_depth + 1:
             action = np.argmax(node.action_values)
-            state, reward, done, _ = cur_env.step(np.argmax(node.action_values))
+            state, reward, done, _ = cur_env.step(action)
             total_reward += discount * reward
             discount *= self.gamma
+            self.add_nodes(node, state, action)
             node = node.children[action].children[state]
         return total_reward
 
+    def add_nodes(self, node, state, action):
+        if node.children[action] is None:
+            node.children[action] = ActionNode(self.nS)
+            node.children[action].children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1)
+        else:
+            act = node.children[action]
+            if act.children[state] is None:
+                act.children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1) 
+
 if __name__ == "__main__":
     np.set_printoptions(precision = 4)
-    print "working"
-    r = BAFA([({'slip' : 1}, 1./3), ({'slip' : 0}, 1./3), ({'slip' : .3}, 1./3)], toy_text.NChainEnv, nS = 5, nA = 2, max_depth = 1, gamma = 1, lr = .5)
+    r = BAFA([({'slip' : 1}, 1./2), ({'slip' : 0}, 1./2)], 
+                toy_text.NChainEnv, nS = 5, nA = 2,
+                 max_depth = 1, gamma = 1, lr = .5, epsilon = .1)
     st = time.time()
-    r.run(50000)
+    r.run(10000)
     print "Runtime: {}".format(time.time() - st)
     print "V: {}".format(r.V)
     print "Adversarial distribution: {}".format(r.b_adv_avg)

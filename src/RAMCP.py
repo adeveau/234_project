@@ -120,14 +120,15 @@ def walk(node, a):
         if c is not None:
             if isinstance(c, StateNode):
                 a[0] += 1
-                print np.array(c.action_values).argmax()
+                if not (c.children[0] is None and c.children[1] is None):
+                    print np.array(c.action_values).argmax()
             walk(c, a)
 
 if __name__ == "__main__":
     np.set_printoptions(precision = 4)
-    r = RAMCP([({'slip' : 1}, 1./3), ({'slip' : 0}, 1./3), ({'slip' : .3}, 1./3)], toy_text.NChainEnv, 5, 2, n_trans = 2, max_depth = 1, gamma = 1)
+    r = RAMCP([({'slip' : .95}, 1./2), ({'slip' : .05}, 1./2)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 1, gamma = 1)
     st = time.time()
-    r.run(5000)
+    r.run(10000)
     print "Runtime: {}".format(time.time() - st)
     print "V: {}".format(r.V)
     print "Adversarial distribution: {}".format(r.b_adv_avg)
