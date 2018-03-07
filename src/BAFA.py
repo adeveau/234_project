@@ -51,13 +51,14 @@ class BAFA(object):
             #idx = np.random.choice(range(len(self.b_adv_cur)), p = self.b_adv_cur, size = 1)[0]
             for idx in xrange(len(self.envs)):
                 r = self.simulate(node, idx)
-                self.V[idx] += (r - self.V[idx])/float(self.n_iter)
+                self.V[idx] += (self.mc_rollout(self.root, idx) - self.V[idx])/float(self.n_iter)
             self.update_b_adv()
 
     def simulate(self, node, idx):
         if node.depth > self.max_depth:
             return 0
 
+        #Use an epsilon greedy policy to choose the next action
         if np.random.random() < self.epsilon:
             action = np.random.choice(range(self.nA))
         else:
@@ -65,6 +66,7 @@ class BAFA(object):
 
         cur_env = self.envs[idx]
 
+        #Set the environment's state to be the last state in the history corresponding to node
         cur_env.state = node.tail
 
         #Sample a new transition
@@ -72,6 +74,8 @@ class BAFA(object):
 
         w = len(self.envs)*self.b_adv_cur[idx]
 
+
+        #Add nodes to the tree if necessary
         if node.children[action] is None:
             node.children[action] = ActionNode(self.nS)
             node.children[action].children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1)
@@ -80,13 +84,16 @@ class BAFA(object):
             if act.children[state] is None:
                 act.children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1)    
 
+        #Recurse as in BAFA paper
         R = reward + self.gamma*self.simulate(node.children[action].children[state], idx)
 
-        ##Using one-hot encoding x(s,a)_{s', a'} from HW2
-        node.action_values[action] -=  w*max(.01,self.lr/self.n_iter)*(node.action_values[action] - R)
+        ##Tabular case
+        node.action_values[action] -=  w*max(.1, self.lr/self.n_iter)*(node.action_values[action] - R)
         return R
 
     def update_b_adv(self):
+        #Solve a linear program to get b_adv_cur
+        #Only constraint right now is that the probabilities have to sum to 1
         self.b_adv_cur = optimize.linprog(self.V, A_eq = np.ones((1, len(self.prior))), b_eq = np.array([1])).x
         self.b_adv_avg += (self.b_adv_cur - self.b_adv_avg)/self.n_iter 
 
@@ -99,7 +106,7 @@ class BAFA(object):
         total_reward = 0
         discount = 1
         done = False
-        while not done and node.depth < self.max_depth:
+        while not done and node.depth < self.max_depth + 1:
             action = np.argmax(node.action_values)
             state, reward, done, _ = cur_env.step(np.argmax(node.action_values))
             total_reward += discount * reward
@@ -109,8 +116,7 @@ class BAFA(object):
 
 if __name__ == "__main__":
     np.set_printoptions(precision = 4)
-    print "working"
-    r = BAFA([({'slip' : 1}, 1./3), ({'slip' : 0}, 1./3), ({'slip' : .3}, 1./3)], toy_text.NChainEnv, nS = 5, nA = 2, max_depth = 1, gamma = 1, lr = .5)
+    r = BAFA([({'slip' : 1}, 1./2), ({'slip' : 0}, 1./2)], toy_text.NChainEnv, nS = 5, nA = 2, max_depth = 1, gamma = 1, lr = .5)
     st = time.time()
     r.run(50000)
     print "Runtime: {}".format(time.time() - st)
