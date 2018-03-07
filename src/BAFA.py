@@ -112,7 +112,7 @@ if __name__ == "__main__":
     print "working"
     r = BAFA([({'slip' : 1}, 1./3), ({'slip' : 0}, 1./3), ({'slip' : .3}, 1./3)], toy_text.NChainEnv, nS = 5, nA = 2, max_depth = 1, gamma = 1, lr = .5)
     st = time.time()
-    r.run(5000)
+    r.run(50000)
     print "Runtime: {}".format(time.time() - st)
     print "V: {}".format(r.V)
     print "Adversarial distribution: {}".format(r.b_adv_avg)
