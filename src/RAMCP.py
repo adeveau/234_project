@@ -1,5 +1,5 @@
 import numpy as np
-import mod_pend.envs as envs
+#import mod_pend.envs as envs
 from scipy import optimize
 from gym.envs import toy_text
 import time
@@ -61,14 +61,14 @@ class RAMCP(object):
         for i, (old_val, new_val) in enumerate(zip(node.action_values, action_values)):
             #Weighted Monte Carlo update
             node.action_values[i] += (w*new_val - old_val)/(node.count)
-            if new_val > cur_max:
-                cur_max = new_val
+            if old_val > cur_max:
+                cur_max = old_val
                 argmax = i           
 
         #Update the action counts to track the average policy
         node.avg_action_cts[argmax] += 1
 
-        return cur_max
+        return action_values[argmax]
 
     def estimateQ(self, node, idx):
         cur_env = self.envs[idx]
@@ -121,16 +121,16 @@ def walk(node, a):
             if isinstance(c, StateNode):
                 a[0] += 1
                 print np.array(c.action_values).argmax()
-            walk(c, a, b)
+            walk(c, a)
 
 if __name__ == "__main__":
-    r = RAMCP([({'slip' : 1}, 1./2), ({'slip' : 0}, 1./1)], toy_text.NChainEnv, 5, 2, n_trans = 2, max_depth = 7, gamma = 1)
+    r = RAMCP([({'slip' : 1}, 1./2), ({'slip' : 0}, 1./1)], toy_text.NChainEnv, 5, 2, n_trans = 2, max_depth = 3, gamma = 1)
     st = time.time()
-    r.run(100)
+    r.run(5000)
     print "Runtime: {}".format(time.time() - st)
     print "V: {}".format(r.V)
     print "Adversarial distribution: {}".format(r.b_adv_avg)
     print "root values {}".format(r.root.action_values)
-    a = [0]
-    walk(r.root, a)
+    #a = [0]
+    #walk(r.root, a)
 
