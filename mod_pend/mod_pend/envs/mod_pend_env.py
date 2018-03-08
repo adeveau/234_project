@@ -2,6 +2,7 @@ import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
 from gym.envs import classic_control
+import numpy as np
 
 class ModPendulumEnv(classic_control.PendulumEnv):
     def __init__(self, g):
@@ -26,3 +27,6 @@ class ModPendulumEnv(classic_control.PendulumEnv):
 
         self.state = np.array([newth, newthdot])
         return self._get_obs(), -costs, False, {}
+
+def angle_normalize(x):
+    return (((x+np.pi) % (2*np.pi)) - np.pi)

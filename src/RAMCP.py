@@ -1,31 +1,29 @@
 import numpy as np
-#import mod_pend.envs as envs
+import mod_pend.envs as envs
 from scipy import optimize
 from gym.envs import toy_text
 import time
 import copy
 
 class StateNode(object):
-    def __init__(self, tail, nS, nA, depth = 0):
-        self.children = [None]*nA
-        self.action_values = np.zeros((2,nA))
+    def __init__(self, tail, depth = 0):
+        self.children = {}
+        self.action_values =  {}
         self.depth = depth
-        self.counts = [0,0]
-        self.avg_action_cts = [0]*nA
+        self.count = 0
+        self.avg_action_cts = {}
         self.tail = tail
 
     def value(self):
         return max(self.action_values)
 
 class ActionNode(object):
-    def __init__(self, nS):
-        self.children = [None]*nS
+    def __init__(self):
+        self.children = {}
 
 class RAMCP(object):
-    def __init__(self, prior, env, nS, nA, max_depth = 10, gamma = .9, s0 = 0, n_trans = 1):
+    def __init__(self, prior, env, max_depth = 10, gamma = .9, s0 = None, n_trans = 1):
         self.gamma = gamma
-        self.nS = nS
-        self.nA = nA
 
         self.prior = []
         self.envs = []
@@ -33,64 +31,77 @@ class RAMCP(object):
             self.prior.append(tup[1])
             self.envs.append(env(**tup[0]))
 
+
         self.prior = np.array(self.prior)
         self.b_adv_cur = self.prior.copy()
         self.b_adv_avg = self.prior.copy()
         self.max_depth = max_depth
         self.n_iter = 0
 
-        self.root = StateNode(tail = s0, nS = self.nS, nA = self.nA, depth = 0)
+        if s0 is None:
+            s0 = np.zeros(2)
+
+        self.root = StateNode(tail = s0, depth = 0)
         self.V  = [0]*len(self.envs)
         self.n_trans = n_trans
 
-    def estimateV(self, node, idx):
+    def estimateV(self, node, idx, tol = .045):
         if node.depth > self.max_depth:
-            return 0, np.random.randint(0,2)
+            return 0
 
-        action_values, which_q = self.estimateQ(node, idx)
-        
+        action_values = self.estimateQ(node, idx)
+        node.count += 1
 
         #Update action_values based on the new samples from estimateQ
 
-
-        #We sample every action every time, so we need to reweight based on b_adv_cur
+        #We sample every transition model every time, so we need to reweight based on b_adv_cur
         #Importance-sampling-esque
         w = len(self.envs)*self.b_adv_cur[idx]
-        
-        print w
-        
-        node.counts[int(not which_q)] += 1
-        for i, (old_val, new_val) in enumerate(zip(node.action_values[int(not which_q), :], action_values)):
-            node.action_values[int(not which_q), i] += (w*new_val - old_val)/(node.counts[int (not which_q)])
 
-        which_q = np.random.randint(0,2)
-        argmax = np.argmax(node.action_values[which_q, :])    
-        
+        for i, (old_val, new_val) in enumerate(zip(node.action_values, action_values)):
+            node.action_values[i] += (w*new_val - old_val)/(node.count)        
 
-        #Update the action counts to track the average policy
+        #Set the argmax and update the action counts to track the average policy
+        cur_max = -np.inf
+        for action in node.action_values:
+            if node.action_values[action] > cur_max:
+                argmax = action 
+                cur_max = node.action_values[action]
+
         node.avg_action_cts[argmax] += 1
 
-        return node.action_values[int(not which_q), argmax], which_q
+        return action_values[argmax]
 
     def estimateQ(self, node, idx):
         cur_env = self.envs[idx]
-        new_values = [0]*self.nA
-        for action in xrange(self.nA):
+        new_values = {}
+        for y in xrange(10):
             for x in xrange(self.n_trans):
                 #First reset the state so we can sample again
                 cur_env.state = node.tail
-
+                action = cur_env.action_space.sample()
                 #Sample a new transition
                 state, reward, done, _ = cur_env.step(action)
 
                 #Add nodes to the tree if necessary
-                self.add_nodes(node, state, action)
+                if self.n_iter % 5 == 0 or self.n_iter == 1:
+                    self.add_nodes(node, state, action)
+                    update_action = tuple(action)
+                    next_node = node.children[tuple(action)].children[tuple(obs_to_state(state))]
+                else:
+                    closest_action = closest(action, node.children)
+                    closest_state = closest(state, node.children[closest_action])
+                    next_node = node.children[closest_action].children[closest_state]
+                    update_action = closest_action
 
                 #Recurse 
-                v, which_q = self.estimateV(node.children[action].children[state], idx)
-                new_values[action] += 1./(self.n_trans) * (reward + self.gamma*v)
+                v = self.estimateV(next_node, idx)
+                if tuple(action) in new_values:
+                    new_values[update_action] += 1./(self.n_trans) * (reward + self.gamma*v)
+                else:
+                    new_values[update_action] = 1./(self.n_trans) * (reward + self.gamma*v)
 
-        return new_values, which_q
+        return new_values
 
 
     def update_b_adv(self):
@@ -103,7 +114,7 @@ class RAMCP(object):
     def step(self):
         self.n_iter += 1
         for idx in xrange(len(self.envs)):
-            r, _ = self.estimateV(self.root, idx) 
+            r = self.estimateV(self.root, idx) 
             self.V[idx] += (r - self.V[idx])/self.n_iter
         self.update_b_adv()
 
@@ -112,13 +123,29 @@ class RAMCP(object):
             self.step()
 
     def add_nodes(self, node, state, action):
-        if node.children[action] is None:
-            node.children[action] = ActionNode(self.nS)
-            node.children[action].children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1)
+        state = tuple(obs_to_state(state))
+        action = tuple(action)
+        if action not in node.children:
+            node.children[action] = ActionNode()
+            node.children[action].children[state] = StateNode(tail = np.array(state), depth = node.depth + 1)
         else:
             act = node.children[action]
-            if act.children[state] is None:
-                act.children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1)        
+            if state not in node.children[action].children:
+                act.children[state] = StateNode(tail = np.array(state), depth = node.depth + 1) 
+
+
+def obs_to_state(obs):
+    return np.array([np.arccos(obs[0]), obs[2]])
+
+def closest(target, array):
+    min_dist = np.inf
+    for value in array:
+        value = np.array(value)
+        if np.norm(target - value) < min_dist:
+            min_dist = np.norm(target - value)
+            argmin = value
+
+    return argmin
 
 def walk(node, a):
     for c in node.children:
@@ -131,13 +158,13 @@ def walk(node, a):
 
 if __name__ == "__main__":
     np.set_printoptions(precision = 4)
-    r = RAMCP([({'slip' : 1}, 1./2), ({'slip' : 0}, 1./2)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 0, gamma = 1)
+    r = RAMCP([({'g' : 10}, 1./3), ({'g' : 5}, 2./3)], envs.ModPendulumEnv, n_trans = 1, max_depth = 10, gamma = 1)
     st = time.time()
-    r.run(10000)
+    r.run(100)
     print "Runtime: {}".format(time.time() - st)
     print "V: {}".format(r.V)
     print "Adversarial distribution: {}".format(r.b_adv_avg)
-    print "root values \n {}".format(r.root.action_values)
+    print "root values {}".format(r.root.action_values)
     #a = [0]
     #walk(r.root, a)
 
