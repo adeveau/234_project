@@ -51,9 +51,10 @@ class BAFA(object):
             #idx = np.random.choice(range(len(self.b_adv_cur)), p = self.b_adv_cur, size = 1)[0]
             for idx in xrange(len(self.envs)):
                 r = self.simulate(node, idx)
-                self.V[idx] += (r - self.V[idx])/float(self.n_iter)
+                self.V[idx] += (self.greedy_rollout(self.root, idx) - self.V[idx])/float(self.n_iter)
             self.update_b_adv()
-            self.epsilon *= .99
+            if self.n_iter % 50 == 0:
+                self.epsilon *= .99
 
     def simulate(self, node, idx):
         if node.depth > self.max_depth:
@@ -75,7 +76,8 @@ class BAFA(object):
 
         self.add_nodes(node, state, action)
 
-        R = reward + self.gamma*self.simulate(node.children[action].children[state], idx)
+        R = reward + self.gamma*node.children[action].children[state].value()
+        self.simulate(node.children[action].children[state], idx)
 
         ##Using one-hot encoding x(s,a)_{s', a'} from HW2
         node.action_values[action] -=  w*max(.01,self.lr/self.n_iter)*(node.action_values[action] - R)
@@ -118,7 +120,7 @@ if __name__ == "__main__":
                 toy_text.NChainEnv, nS = 5, nA = 2,
                  max_depth = 1, gamma = 1, lr = .5, epsilon = .1)
     st = time.time()
-    r.run(10000)
+    r.run(500)
     print "Runtime: {}".format(time.time() - st)
     print "V: {}".format(r.V)
     print "Adversarial distribution: {}".format(r.b_adv_avg)
