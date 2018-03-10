@@ -131,6 +131,8 @@ class RAMCP(object):
             r = self.estimateV(self.root, idx) 
             self.V[idx] += (r - self.V[idx])/self.n_iter
         self.update_b_adv()
+        if self.n_iter % 100 == 0:
+            self.lr *= .99
 
     def run(self, n):
         for x in xrange(n):
@@ -159,7 +161,7 @@ if __name__ == "__main__":
     np.set_printoptions(precision = 4)
     r = RAMCP([({'slip' : 1}, .99), ({'slip' : 0}, .01)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 1, gamma = 1)
     st = time.time()
-    r.run(500)
+    r.run(5000)
     print "Runtime: {}".format(time.time() - st)
     print "V: {}".format(r.V)
     print "Adversarial distribution: {}".format(r.b_adv_avg)
