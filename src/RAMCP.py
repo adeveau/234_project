@@ -4,6 +4,10 @@ from scipy import optimize
 from gym.envs import toy_text
 import time
 import copy
+from keras.models import Sequential
+from keras.layers import Input, Dense
+from keras import optimizers
+import keras.backend as K
 
 class StateNode(object):
     def __init__(self, tail, nS, nA, z, n_envs, depth = 0):
@@ -47,7 +51,7 @@ class RAMCP(object):
         self.V  = [0]*len(self.envs)
         self.n_trans = n_trans
 
-        self.weights = np.zeros((len(self.envs), len(feature_vec(0, 0))))
+        self.model = self.build_model()
 
     def estimateV(self, node, idx):
         if node.depth > self.max_depth:
@@ -57,24 +61,24 @@ class RAMCP(object):
         node.counts[idx] += 1
         action_values = self.estimateQ(node, idx)
 
+        r = np.random.random()
+        if r > .5:
+            argmax = np.argmax(self.computeQ(node))
+        
         #We sample every action every time, so we need to reweight based on b_adv_cur
         #Importance-sampling-esque
         w = len(self.envs)*self.b_adv_cur[idx]
 
-        argmax = 0
-        cur_max = -np.inf
-        for action, new_val in enumerate(action_values):
-            #Weighted Monte Carlo update
-            old_value = self.computeQ(node, action)
-            self.weights -=  w * self.lr * (old_value - new_val)*(np.outer(node.z, feature_vec(node.tail, action)))
-            if old_value > cur_max:
-                argmax = action
-                cur_max = old_value
+        K.set_value(self.model.optimizer.lr, w*.01)
+        self.model.fit(x = feature_vec(node), y = action_values, verbose = 0)
 
         #Update the action counts to track the average policy
-        node.avg_action_cts[argmax] += 1
+        
 
-        return action_values[argmax]
+        if r < .5:
+            argmax = np.argmax(self.computeQ(node))
+        node.avg_action_cts[argmax] += 1
+        return action_values[0, argmax]
 
     def estimateQ(self, node, idx):
         cur_env = self.envs[idx]
@@ -101,7 +105,7 @@ class RAMCP(object):
                 v = self.estimateV(next_node, idx)
                 new_values[action] += 1./(self.n_trans) * (reward + self.gamma*v)
 
-        return new_values
+        return np.array(new_values).reshape((1,2))
 
     def add_nodes(self, node, state, action, idx):        
         new_z = np.zeros(len(self.envs))
@@ -138,19 +142,27 @@ class RAMCP(object):
         for x in xrange(n):
             self.step()
 
+    def build_model(self):
+        model = Sequential()
+        model.add(Dense(32, input_dim = len(self.envs) + self.nS, activation = 'relu'))
+        model.add(Dense(self.nA, input_dim = 32, activation = 'linear'))
 
-    def computeQ(self, node, action):
-        return np.dot(np.dot(node.z, self.weights), feature_vec(node.tail, action))
+        sgd = optimizers.SGD(lr = .01, decay = 0, momentum = 0, nesterov = False)
+        model.compile(loss = 'mean_squared_error', optimizer = sgd)
 
-def feature_vec(s, a):
-    f = np.zeros(6)
-    f[s] = 1
-    f[-1] = a
-    return f
+        return model
+
+    def computeQ(self, node):
+        return self.model.predict(feature_vec(node))
+
+def feature_vec(node):
+    f = np.zeros(5)
+    f[node.tail] = 1
+    return np.concatenate([f, node.z], axis = 0).reshape((1,7))
 
 def walk(node, r):
     if isinstance(node, StateNode):
-        print "action values: {}".format([r.computeQ(node, action) for action in xrange(r.nA)])
+        print "action values: {}".format(r.computeQ(node))
         print "z :{}".format(node.z)
 
     for c in node.children:
@@ -159,13 +171,12 @@ def walk(node, r):
 
 if __name__ == "__main__":
     np.set_printoptions(precision = 4)
-    r = RAMCP([({'slip' : 1}, .99), ({'slip' : 0}, .01)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 1, gamma = 1)
+    r = RAMCP([({'slip' : 1}, .8), ({'slip' : 0}, .2)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 2, gamma = 1)
     st = time.time()
-    r.run(5000)
+    r.run(500)
     print "Runtime: {}".format(time.time() - st)
     print "V: {}".format(r.V)
     print "Adversarial distribution: {}".format(r.b_adv_avg)
-    print "root values {}".format([r.computeQ(r.root, action) for action in xrange(r.nA)])
-    #a = [0]
+    print "root values {}".format(r.computeQ(r.root))
     #walk(r.root, a)
 
