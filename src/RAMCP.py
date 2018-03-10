@@ -6,11 +6,12 @@ import time
 import copy
 
 class StateNode(object):
-    def __init__(self, tail, nS, nA, z, depth = 0):
+    def __init__(self, tail, nS, nA, z, n_envs, depth = 0):
         self.children = [None]*nA
         self.action_values = [0]*nA
         self.depth = depth
         self.count = 0
+        self.counts = [0]*n_envs
         self.avg_action_cts = [0]*nA
         self.tail = tail
         self.z = z
@@ -41,16 +42,19 @@ class RAMCP(object):
         self.n_iter = 0
 
         init_z = np.ones(len(self.envs))/float(len(self.envs))
-        self.root = StateNode(tail = s0, nS = self.nS, nA = self.nA, depth = 0, z = init_z)
+        self.root = StateNode(tail = s0, nS = self.nS, nA = self.nA, depth = 0, z = init_z, n_envs = len(self.envs))
         self.V  = [0]*len(self.envs)
         self.n_trans = n_trans
+
+        self.weights
 
     def estimateV(self, node, idx):
         if node.depth > self.max_depth:
             return 0
 
-        action_values = self.estimateQ(node, idx)
         node.count += 1
+        node.counts[idx] += 1
+        action_values = self.estimateQ(node, idx)
 
         #Update action_values based on the new samples from estimateQ
         argmax = 0
@@ -92,10 +96,7 @@ class RAMCP(object):
 
                 for child in node.children[action].children:
                     if child is not None:
-                        child.z[idx] *= (node.count)/(node.count + 1)
-
-                if not node_added:
-                    next_node.z[idx] *= (next_node.count + 1)/(max(1,next_node.count))
+                        child.z[idx] = node.z[idx] * child.counts[idx]/float(node.counts[idx])
 
                 v = self.estimateV(next_node, idx)
                 new_values[action] += 1./(self.n_trans) * (reward + self.gamma*v)
@@ -104,15 +105,16 @@ class RAMCP(object):
 
     def add_nodes(self, node, state, action, idx):        
         new_z = np.zeros(len(self.envs))
-        new_z[idx] = node.z[idx]/node.count
+        new_z[idx] = node.z[idx]/float(node.counts[idx])
+        next_state_node = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1, z = new_z, n_envs = len(self.envs))
         if node.children[action] is None:
             node.children[action] = ActionNode(self.nS)
-            node.children[action].children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1, z = new_z)
+            node.children[action].children[state] = next_state_node
             return True
         else:
             act = node.children[action]
             if act.children[state] is None:
-                act.children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1, z = new_z)
+                act.children[state] = next_state_node
                 return True
         return False
 
