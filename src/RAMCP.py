@@ -8,7 +8,7 @@ import copy
 class StateNode(object):
     def __init__(self, tail, nS, nA, z, n_envs, depth = 0):
         self.children = [None]*nA
-        self.action_values = [0]*nA
+#        self.action_values = [0]*nA
         self.depth = depth
         self.count = 0
         self.counts = [0]*n_envs
@@ -24,7 +24,7 @@ class ActionNode(object):
         self.children = [None]*nS
 
 class RAMCP(object):
-    def __init__(self, prior, env, nS, nA, max_depth = 10, gamma = .9, s0 = 0, n_trans = 1):
+    def __init__(self, prior, env, nS, nA, max_depth = 10, gamma = .9, s0 = 0, n_trans = 1, lr = .1):
         self.gamma = gamma
         self.nS = nS
         self.nA = nA
@@ -40,13 +40,14 @@ class RAMCP(object):
         self.b_adv_avg = self.prior.copy()
         self.max_depth = max_depth
         self.n_iter = 0
+        self.lr = lr
 
         init_z = np.ones(len(self.envs))/float(len(self.envs))
         self.root = StateNode(tail = s0, nS = self.nS, nA = self.nA, depth = 0, z = init_z, n_envs = len(self.envs))
         self.V  = [0]*len(self.envs)
         self.n_trans = n_trans
 
-        self.weights
+        self.weights = np.zeros((len(self.envs), len(feature_vec(0, 0))))
 
     def estimateV(self, node, idx):
         if node.depth > self.max_depth:
@@ -56,20 +57,19 @@ class RAMCP(object):
         node.counts[idx] += 1
         action_values = self.estimateQ(node, idx)
 
-        #Update action_values based on the new samples from estimateQ
-        argmax = 0
-        cur_max = -np.inf
-
         #We sample every action every time, so we need to reweight based on b_adv_cur
         #Importance-sampling-esque
         w = len(self.envs)*self.b_adv_cur[idx]
 
-        for i, (old_val, new_val) in enumerate(zip(node.action_values, action_values)):
+        argmax = 0
+        cur_max = -np.inf
+        for action, new_val in enumerate(action_values):
             #Weighted Monte Carlo update
-            node.action_values[i] += (w*new_val - old_val)/(node.count)
-            if old_val > cur_max:
-                cur_max = old_val
-                argmax = i           
+            old_value = self.computeQ(node, action)
+            self.weights -=  w * self.lr * (old_value - new_val)*(np.outer(node.z, feature_vec(node.tail, action)))
+            if old_value > cur_max:
+                argmax = action
+                cur_max = old_value
 
         #Update the action counts to track the average policy
         node.avg_action_cts[argmax] += 1
@@ -136,24 +136,34 @@ class RAMCP(object):
         for x in xrange(n):
             self.step()
 
-def walk(node, a):
+
+    def computeQ(self, node, action):
+        return np.dot(np.dot(node.z, self.weights), feature_vec(node.tail, action))
+
+def feature_vec(s, a):
+    f = np.zeros(6)
+    f[s] = 1
+    f[-1] = a
+    return f
+
+def walk(node, r):
+    if isinstance(node, StateNode):
+        print "action values: {}".format([r.computeQ(node, action) for action in xrange(r.nA)])
+        print "z :{}".format(node.z)
+
     for c in node.children:
         if c is not None:
-            if isinstance(c, StateNode):
-                a[0] += 1
-                if not (c.children[0] is None and c.children[1] is None):
-                    print np.array(c.action_values).argmax()
-            walk(c, a)
+            walk(c, r)
 
 if __name__ == "__main__":
     np.set_printoptions(precision = 4)
-    r = RAMCP([({'slip' : 1}, 1./2), ({'slip' : 0}, 1./2)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 2, gamma = 1)
+    r = RAMCP([({'slip' : 1}, .99), ({'slip' : 0}, .01)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 1, gamma = 1)
     st = time.time()
-    r.run(100)
+    r.run(500)
     print "Runtime: {}".format(time.time() - st)
     print "V: {}".format(r.V)
     print "Adversarial distribution: {}".format(r.b_adv_avg)
-    print "root values {}".format(r.root.action_values)
+    print "root values {}".format([r.computeQ(r.root, action) for action in xrange(r.nA)])
     #a = [0]
     #walk(r.root, a)
 
