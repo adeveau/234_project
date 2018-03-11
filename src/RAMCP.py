@@ -73,8 +73,8 @@ class RAMCP(object):
     def estimateQ(self, node, idx):
         cur_env = self.envs[idx]
         new_values = [0]*self.nA
-        for action in xrange(self.nA):
-            for x in xrange(self.n_trans):
+        for action in range(self.nA):
+            for x in range(self.n_trans):
                 #First reset the state so we can sample again
                 cur_env.state = node.tail
 
@@ -106,13 +106,13 @@ class RAMCP(object):
 
     def step(self):
         self.n_iter += 1
-        for idx in xrange(len(self.envs)):
+        for idx in range(len(self.envs)):
             r = self.estimateV(self.root, idx) 
             self.V[idx] += (r - self.V[idx])/self.n_iter
         self.update_b_adv()
 
     def run(self, n):
-        for x in xrange(n):
+        for x in range(n):
             self.step()
 
 def walk(node, a):
@@ -121,18 +121,18 @@ def walk(node, a):
             if isinstance(c, StateNode):
                 a[0] += 1
                 if not (c.children[0] is None and c.children[1] is None):
-                    print np.array(c.action_values).argmax()
+                    print(np.array(c.action_values).argmax())
             walk(c, a)
 
 if __name__ == "__main__":
     np.set_printoptions(precision = 4)
-    r = RAMCP([({'slip' : 1}, 1./2), ({'slip' : 0}, 1./2)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 2, gamma = 1)
+    r = RAMCP([({'slip' : 1}, 1./2), ({'slip' : 0}, 1./2)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 1, gamma = 1)
     st = time.time()
-    r.run(100)
-    print "Runtime: {}".format(time.time() - st)
-    print "V: {}".format(r.V)
-    print "Adversarial distribution: {}".format(r.b_adv_avg)
-    print "root values {}".format(r.root.action_values)
+    r.run(1)
+    print("Runtime: {}".format(time.time() - st))
+    print("V: {}".format(r.V))
+    print("Adversarial distribution: {}".format(r.b_adv_avg))
+    print("root values {}".format(r.root.action_values))
     #a = [0]
     #walk(r.root, a)
 
