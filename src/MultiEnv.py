@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import optimize
+from gym import spaces
 
 #Kinda awful, but not sure of any other way to make this work
 #Dynamically inherits from the class of envs[0]
@@ -13,7 +14,7 @@ def make_multienv(envs, max_depth = np.inf, gamma = 1):
             self.done = (self.cur_depth >= self.max_depth)
             state, reward, done, _ =  self.cur_env.step(action)
             self.history.extend([state, action, reward])
-            padded_history = np.array(self.history + [0]*(3*self.max_depth - len(self.history)))
+            padded_history = np.array(self.history + [0]*(3*self.max_depth - len(self.history)), dtype = np.float32)
 
             output = (padded_history, reward, self.done, _)
             self.total_reward += reward*gamma**(self.cur_depth)
@@ -44,7 +45,7 @@ def make_multienv(envs, max_depth = np.inf, gamma = 1):
             env.reset()
         #self.__init__(self.envs, self.max_depth)
         self.history = []
-        self.state = np.array([0]*self.max_depth*3)
+        self.state = np.array([0.]*self.max_depth*3)
         return self.state
 
     def hard_reset(self):
@@ -111,9 +112,10 @@ def make_multienv(envs, max_depth = np.inf, gamma = 1):
         self.state = np.array([0]*self.max_depth*3)
 
         self.idx = 0
+        self.observation_space = spaces.Box(-10, 10, shape = (self.max_depth*3, ))
 
 
-    #Have to add __init__ separately to get the cal to super to work :/
+    #Have to add __init__ separately to get the call to super to work :/
     new_multi_env.__init__ = __init__
 
     #Initialize and return
