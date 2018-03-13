@@ -1,8 +1,9 @@
 import numpy as np
 import gym
 import time
-from lake_envs import *
 import copy
+from gym.envs import toy_text
+from MultiEnv import make_multienv
 #import matplotlib.pyplot as plt
 
 def learn_Q_QLearning(env, num_episodes=5000, gamma=0.95, lr=0.1, e=0.8, decay_rate=0.99):
@@ -69,16 +70,16 @@ def learn_Q_QLearning(env, num_episodes=5000, gamma=0.95, lr=0.1, e=0.8, decay_r
         q_alt[old_state][action] = q_alt[old_state][action] + lr*(reward + gamma*q_alt[state].max() - q_alt[old_state][action])
       else:
         q_alt[old_state][action] = q_alt[old_state][action] + lr*(reward - q_alt[old_state][action])
-        for x in range(env.n_envs):
-          env.V[x] += (env.greedy_rollout(q_alt, x) - env.V[x])/float(env.n_iter.mean())
+        for z in range(env.n_envs):
+          env.V[z] += (env.greedy_rollout(q_alt, z) - env.V[z])/float(env.n_iter[z] + 1)
 
       old_state = state
       episode_reward += reward
 
     #q[old_state] = np.ones(env.nA)*reward
     #e = e_orig/(x)
-    lr = lr/x
   print(e)
+  print(lr)
   return q_alt, avg_rewards, action_cts, greedy_cts
 
 def render_single_Q(env, Q):
@@ -107,15 +108,10 @@ def render_single_Q(env, Q):
 
 # Feel free to run your own debug code in main!
 def main():
-  env = gym.make('Stochastic-4x4-FrozenLake-v0')
-  Q, avg_rewards = learn_Q_QLearning(env)
-  fig, ax = plt.subplots()
-  print(Q)
-  print(Q.argmax(1))
-  ax.plot(range(len(avg_rewards)), avg_rewards)
-  fig.savefig("rewards.png")
+  mdps = [toy_text.NChainEnv(slip = x) for x in (0,1)]
+  env = make_multienv(mdps, max_depth = 5, gamma = 1)
+  learn_Q_QLearning(env)
   #render_single_Q(env, Q)
 
 if __name__ == '__main__':
-  pass
-    #main()
+  main()
