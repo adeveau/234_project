@@ -128,7 +128,7 @@ if __name__ == "__main__":
     np.set_printoptions(precision = 4)
     r = RAMCP([({'slip' : 1}, 1./2), ({'slip' : 0}, 1./2)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 1, gamma = 1)
     st = time.time()
-    r.run(1)
+    r.run(1000)
     print("Runtime: {}".format(time.time() - st))
     print("V: {}".format(r.V))
     print("Adversarial distribution: {}".format(r.b_adv_avg))
