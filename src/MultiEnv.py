@@ -13,8 +13,9 @@ def make_multienv(envs, max_depth = np.inf, gamma = 1):
             self.cur_depth += 1
             self.done = (self.cur_depth >= self.max_depth)
             state, reward, done, _ =  self.cur_env.step(action)
-            self.history.extend([state, action, reward])
-            padded_history = np.array(self.history + [0]*(3*self.max_depth - len(self.history)), dtype = np.float32)
+            self.history.extend(list(state))
+            self.history.extend([action, reward])
+            padded_history = np.array(self.history + [0]*((2 + self.obs_dim)*self.max_depth - len(self.history)), dtype = np.float32)
 
             output = (padded_history, reward, self.done, _)
             self.total_reward += reward*gamma**(self.cur_depth)
@@ -22,8 +23,8 @@ def make_multienv(envs, max_depth = np.inf, gamma = 1):
             return output
 
         else:
-            #if self.n_iter[self.idx] > 0:
-            #    self.V[self.idx] += (self.total_reward - self.V[self.idx])/float(self.n_iter[self.idx])
+            if self.n_iter[self.idx] > 0:
+                self.V[self.idx] += (self.total_reward - self.V[self.idx])/float(self.n_iter[self.idx])
 
             self.idx = np.random.choice(range(self.n_envs), p = self.b_adv_cur)
             self.cur_env = self.envs[self.idx]
@@ -45,7 +46,7 @@ def make_multienv(envs, max_depth = np.inf, gamma = 1):
             env.reset()
         #self.__init__(self.envs, self.max_depth)
         self.history = []
-        self.state = np.array([0.]*self.max_depth*3)
+        self.state = np.zeros((2 + self.envs[0].observation_space.shape[0])*self.max_depth)
         return self.state
 
     def hard_reset(self):
@@ -72,7 +73,8 @@ def make_multienv(envs, max_depth = np.inf, gamma = 1):
             state, reward, done, _ = cur_env.step(action)
             cur_depth += 1
             done = done or (cur_depth >= max_depth)
-            history.extend([state, action, reward])
+            history.extend(list(state))
+            history.extend([action, reward])
             total_reward += reward
         return total_reward
 
@@ -82,12 +84,11 @@ def make_multienv(envs, max_depth = np.inf, gamma = 1):
     new_multi_env = type("MultiEnv_{}".format(cls.__name__), 
                         (cls,), 
                         {'step' : step, 'update_b' : update_b, 'reset' : reset, 
-                        'nS' : envs[0].observation_space.n, 'nA' : envs[0].action_space.n,
                         'hard_reset' : hard_reset, 'greedy_rollout' : greedy_rollout})
 
 
     def __init__(self, envs, max_depth = np.inf, gamma = 1):
-        super(new_multi_env, self).__init__()
+        super(new_multi_env, self).__init__(g = 10)
         self.envs = envs
         self.n_envs = len(self.envs)
         self.done = True
@@ -109,10 +110,13 @@ def make_multienv(envs, max_depth = np.inf, gamma = 1):
         self.total_reward = 0
         self.gamma = gamma
         self.V = np.zeros(self.n_envs)
-        self.state = np.array([0]*self.max_depth*3)
+
+
+        self.obs_dim = self.envs[0].observation_space.shape[0]
+        self.state = np.zeros((2 + self.obs_dim)*self.max_depth)
 
         self.idx = 0
-        self.observation_space = spaces.Box(-10, 10, shape = (self.max_depth*3, ))
+        self.observation_space = spaces.Box(-10, 10, shape = ((2 + self.obs_dim)*self.max_depth, ))
 
 
     #Have to add __init__ separately to get the call to super to work :/
@@ -120,25 +124,3 @@ def make_multienv(envs, max_depth = np.inf, gamma = 1):
 
     #Initialize and return
     return new_multi_env(envs, max_depth, gamma)
-
-"""
-class MultiEnv(gym.env):
-    def __init__(self, envs, max_depth = None):
-        self.envs = envs
-        self.n_evns = len(self.envs)
-        self.done = False
-        self.cur_depth = 0
-        self.b = np.ones(self.n_envs)/float(self.n_envs)
-        self.cur_env = 0
-        self.epsilon = .1/self.n_envs
-
-    def step(action):
-        if not done:
-            return self.cur_env.step(action)
-        else:
-            #We add a small self.epsilon to each entry in self.b to ensure non-zero probability of selecting
-            #each environment. To ensure convergence, we must have self.epsilon -> 0 as n -> infinity
-            cur_env = self.envs[np.random.choice(range(self.n_envs), p = (self.b + self.epsilon)/(1 + self.n_envs*self.epsilon)]
-            done = False
-            step(action)
-"""

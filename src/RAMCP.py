@@ -4,6 +4,10 @@ from scipy import optimize
 from gym.envs import toy_text
 import time
 import copy
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt 
+
 
 class StateNode(object):
     def __init__(self, tail, nS, nA, depth = 0):
@@ -22,7 +26,7 @@ class ActionNode(object):
         self.children = [None]*nS
 
 class RAMCP(object):
-    def __init__(self, prior, env, nS, nA, max_depth = 10, gamma = .9, s0 = 0, n_trans = 1):
+    def __init__(self, prior, env, nS, nA, max_depth = 10, gamma = .9, s0 = 0, n_trans = 1, bootstrap = False):
         self.gamma = gamma
         self.nS = nS
         self.nA = nA
@@ -42,6 +46,8 @@ class RAMCP(object):
         self.root = StateNode(tail = s0, nS = self.nS, nA = self.nA, depth = 0)
         self.V  = [0]*len(self.envs)
         self.n_trans = n_trans
+
+        self.bootstrap = bootstrap
 
     def estimateV(self, node, idx):
         if node.depth > self.max_depth:
@@ -68,7 +74,10 @@ class RAMCP(object):
         #Update the action counts to track the average policy
         node.avg_action_cts[argmax] += 1
 
-        return action_values[argmax]
+        if not self.bootstrap:
+            return action_values[argmax]
+        else:
+            return node.action_values[argmax]
 
     def estimateQ(self, node, idx):
         cur_env = self.envs[idx]
@@ -126,13 +135,37 @@ def walk(node, a):
 
 if __name__ == "__main__":
     np.set_printoptions(precision = 4)
-    r = RAMCP([({'slip' : 1}, 1./2), ({'slip' : 0}, 1./2)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 0, gamma = 1)
+    n = 5
+    slip_params = [np.random.random() for x in range(n)]
+    envs1 = [({'slip' : s}, 1./n) for s in slip_params]
+    envs2 = [({'slip' : s}, 1./n) for s in slip_params]
+    r_no_bootstrap = RAMCP(envs1, toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 3, gamma = 1, bootstrap = False)
+    r_bootstrap = RAMCP(envs2, toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 3, gamma = 1, bootstrap = True)
+
     st = time.time()
-    r.run(1000)
+    no_bootstrap = []
+    bootstrap = []
+    for x in range(100):
+        print(x)
+        r_no_bootstrap.run(10)
+        no_bootstrap.append(r_no_bootstrap.root.action_values[0])
+
+    for x in range(100):
+        print(x)
+        r_bootstrap.run(10)
+        bootstrap.append(r_bootstrap.root.action_values[0])
+
+    fig, ax = plt.subplots()
+
+    ax.plot(range(0, 1000, 10), no_bootstrap)
+    ax.plot(range(0, 1000, 10), bootstrap)
+
+    fig.savefig("Bootstrap v. No Bootstrap.png")
+    """
     print("Runtime: {}".format(time.time() - st))
     print("V: {}".format(r.V))
     print("Adversarial distribution: {}".format(r.b_adv_avg))
     print("root values {}".format(r.root.action_values))
     #a = [0]
     #walk(r.root, a)
-
+    """
