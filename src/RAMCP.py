@@ -22,7 +22,7 @@ class ActionNode(object):
         self.children = [None]*nS
 
 class RAMCP(object):
-    def __init__(self, prior, env, nS, nA, max_depth = 10, gamma = .9, s0 = 0, n_trans = 1):
+    def __init__(self, prior, env, nS, nA, max_depth = 10, gamma = .9, s0 = 0, n_trans = 1, delta = 0):
         self.gamma = gamma
         self.nS = nS
         self.nA = nA
@@ -42,6 +42,9 @@ class RAMCP(object):
         self.root = StateNode(tail = s0, nS = self.nS, nA = self.nA, depth = 0)
         self.V  = [0]*len(self.envs)
         self.n_trans = n_trans
+
+        # convergence criterion
+        self.delta = delta
 
     def estimateV(self, node, idx):
         if node.depth > self.max_depth:
@@ -105,15 +108,21 @@ class RAMCP(object):
         self.b_adv_avg += (self.b_adv_cur - self.b_adv_avg)/self.n_iter
 
     def step(self):
+        converged = True
         self.n_iter += 1
         for idx in xrange(len(self.envs)):
             r = self.estimateV(self.root, idx) 
-            self.V[idx] += (r - self.V[idx])/self.n_iter
+            change = (r - self.V[idx])/self.n_iter
+            self.V[idx] += change
+            if change >= self.delta:
+                converged = False
         self.update_b_adv()
+        return converged
 
     def run(self, n):
         for x in xrange(n):
-            self.step()
+            if self.step(): break
+        return self.n_iter
 
 def walk(node, a):
     for c in node.children:
@@ -127,7 +136,8 @@ if __name__ == "__main__":
     np.set_printoptions(precision = 4)
     r = RAMCP([({'slip' : 1}, 1./2), ({'slip' : 0}, 1./2)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 1, gamma = 1)
     st = time.time()
-    r.run(5000)
+    n_iter = r.run(5000)
+    print "Number of iterations: {}".format(n_iter)
     print "Runtime: {}".format(time.time() - st)
     print "V: {}".format(r.V)
     print "Adversarial distribution: {}".format(r.b_adv_avg)
