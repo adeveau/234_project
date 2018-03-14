@@ -2,11 +2,13 @@ import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
 from gym.envs import classic_control
+import numpy as np
 
 class ModPendulumEnv(classic_control.PendulumEnv):
-    def __init__(self, g):
+    def __init__(self, g = 10):
         self.g = g
         super(ModPendulumEnv, self).__init__()
+        self.action_space = spaces.Discrete(3)
 
     def step(self, u):
         th, thdot = self.state # th := theta
@@ -16,7 +18,8 @@ class ModPendulumEnv(classic_control.PendulumEnv):
         l = 1.
         dt = self.dt
 
-        u = np.clip(u, -self.max_torque, self.max_torque)[0]
+        u = [-5, 0, 5][u]
+        #u = np.clip(u, -self.max_torque, self.max_torque)[0]
         self.last_u = u # for rendering
         costs = angle_normalize(th)**2 + .1*thdot**2 + .001*(u**2)
 
@@ -26,3 +29,6 @@ class ModPendulumEnv(classic_control.PendulumEnv):
 
         self.state = np.array([newth, newthdot])
         return self._get_obs(), -costs, False, {}
+
+def angle_normalize(x):
+    return (((x+np.pi) % (2*np.pi)) - np.pi)

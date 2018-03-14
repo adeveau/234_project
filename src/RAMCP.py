@@ -7,6 +7,7 @@ import copy
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt 
+from noisy_nchain import NoisyNChainEnv
 
 
 class StateNode(object):
@@ -91,13 +92,8 @@ class RAMCP(object):
                 state, reward, done, _ = cur_env.step(action)
 
                 #Add nodes to the tree if necessary
-                if node.children[action] is None:
-                    node.children[action] = ActionNode(self.nS)
-                    node.children[action].children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1)
-                else:
-                    act = node.children[action]
-                    if act.children[state] is None:
-                        act.children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1)
+                self.add_nodes(node, state, action)
+
 
                 #Recurse 
                 v = self.estimateV(node.children[action].children[state], idx)
@@ -117,12 +113,37 @@ class RAMCP(object):
         self.n_iter += 1
         for idx in range(len(self.envs)):
             r = self.estimateV(self.root, idx) 
-            self.V[idx] += (r - self.V[idx])/self.n_iter
+            self.V[idx] += (self.greedy_rollout(self.root, idx) - self.V[idx])/self.n_iter
+
         self.update_b_adv()
 
     def run(self, n):
         for x in range(n):
             self.step()
+
+    def greedy_rollout(self, node, idx):
+        cur_env = self.envs[idx]
+        cur_env.state = node.tail
+        total_reward = 0
+        discount = 1
+        done = False
+        while not done and node.depth < self.max_depth + 1:
+            action = np.argmax(node.action_values)
+            state, reward, done, _ = cur_env.step(action)
+            total_reward += discount * reward
+            discount *= self.gamma
+            self.add_nodes(node, state, action)
+            node = node.children[action].children[state]
+        return total_reward
+
+    def add_nodes(self, node, state, action):
+        if node.children[action] is None:
+            node.children[action] = ActionNode(self.nS)
+            node.children[action].children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1)
+        else:
+            act = node.children[action]
+            if act.children[state] is None:
+                act.children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1)
 
 def walk(node, a):
     for c in node.children:
@@ -137,31 +158,39 @@ if __name__ == "__main__":
     np.set_printoptions(precision = 4)
     n = 5
     slip_params = [np.random.random() for x in range(n)]
-    envs1 = [({'slip' : s}, 1./n) for s in slip_params]
-    envs2 = [({'slip' : s}, 1./n) for s in slip_params]
-    r_no_bootstrap = RAMCP(envs1, toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 3, gamma = 1, bootstrap = False)
-    r_bootstrap = RAMCP(envs2, toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 3, gamma = 1, bootstrap = True)
+    env = [({'slip' : s}, [.98,.01,.01][i]) for (i,s) in enumerate((.1, .2, .3))]
 
     st = time.time()
     no_bootstrap = []
     bootstrap = []
-    for x in range(100):
-        print(x)
-        r_no_bootstrap.run(10)
-        no_bootstrap.append(r_no_bootstrap.root.action_values[0])
+    n = 1000
 
     for x in range(100):
-        print(x)
-        r_bootstrap.run(10)
-        bootstrap.append(r_bootstrap.root.action_values[0])
+        r_no_bootstrap = RAMCP(env, NoisyNChainEnv, 5, 2, n_trans = 1, max_depth = 7, gamma = 1, bootstrap = False)
+        r_bootstrap = RAMCP(env, NoisyNChainEnv, 5, 2, n_trans = 1, max_depth = 7, gamma = 1, bootstrap = True)
 
+        r_no_bootstrap.run(100)
+        no_bootstrap.append(r_no_bootstrap.b_adv_avg[-1])
+
+        r_bootstrap.run(100)
+        bootstrap.append(r_bootstrap.b_adv_avg[-1])
+
+
+    bootstrap, no_bootstrap = np.array(bootstrap), np.array(no_bootstrap)
+
+    print("Bootstrap: {}, {}".format(bootstrap.mean(), bootstrap.std()))
+    print("No bootstrap: {}, {}".format(no_bootstrap.mean(), no_bootstrap.std()))
+    """
     fig, ax = plt.subplots()
 
-    ax.plot(range(0, 1000, 10), no_bootstrap)
-    ax.plot(range(0, 1000, 10), bootstrap)
+    ax.set_xlabel("Number of Iterations")
+    ax.set_ylabel(r'P($\theta_3$)')
+    ax.plot(range(0, n, 10), no_bootstrap, label = "No Bootstrapping")
+    ax.plot(range(0, n, 10), bootstrap, label = "Bootstrapping")
 
-    fig.savefig("Bootstrap v. No Bootstrap.png")
-    """
+    ax.legend()
+    fig.savefig("Bootstrap v. No Bootstrap_verynoisynchain4.png")
+    
     print("Runtime: {}".format(time.time() - st))
     print("V: {}".format(r.V))
     print("Adversarial distribution: {}".format(r.b_adv_avg))
