@@ -140,6 +140,7 @@ class RAMCP(object):
 
     def run(self, n):
         for x in xrange(n):
+            print(x)
             self.step()
 
     def build_model(self):
@@ -162,8 +163,8 @@ def feature_vec(node):
 
 def walk(node, r):
     if isinstance(node, StateNode):
-        print "action values: {}".format(r.computeQ(node))
-        print "z :{}".format(node.z)
+        print("action values: {}".format(r.computeQ(node)))
+        print( "z :{}".format(node.z))
 
     for c in node.children:
         if c is not None:
@@ -171,12 +172,12 @@ def walk(node, r):
 
 if __name__ == "__main__":
     np.set_printoptions(precision = 4)
-    r = RAMCP([({'slip' : 1}, .8), ({'slip' : 0}, .2)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 2, gamma = 1)
+    r = RAMCP([({'slip' : 1}, .8), ({'slip' : 0}, .2)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 3, gamma = 1)
     st = time.time()
-    r.run(500)
-    print "Runtime: {}".format(time.time() - st)
-    print "V: {}".format(r.V)
-    print "Adversarial distribution: {}".format(r.b_adv_avg)
-    print "root values {}".format(r.computeQ(r.root))
+    r.run(5000)
+    print("Runtime: {}".format(time.time() - st))
+    print("V: {}".format(r.V))
+    print("Adversarial distribution: {}".format(r.b_adv_avg))
+    print("root values {}".format(r.computeQ(r.root)))
     #walk(r.root, a)
 
