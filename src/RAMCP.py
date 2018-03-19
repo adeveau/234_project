@@ -11,11 +11,12 @@ import matplotlib.pyplot as plt
 
 
 class StateNode(object):
-    def __init__(self, tail, nS, nA, depth = 0):
+    def __init__(self, tail, nS, nA, n_env, depth = 0):
         self.children = [None]*nA
         self.action_values = [0]*nA
         self.depth = depth
         self.count = 0
+        self.counts = [0]*n_env
         self.avg_action_cts = [0]*nA
         self.tail = tail
 
@@ -44,7 +45,7 @@ class RAMCP(object):
         self.max_depth = max_depth
         self.n_iter = 0
 
-        self.root = StateNode(tail = s0, nS = self.nS, nA = self.nA, depth = 0)
+        self.root = StateNode(tail = s0, nS = self.nS, nA = self.nA, n_env = len(self.envs), depth = 0)
         self.V  = [0]*len(self.envs)
         self.n_trans = n_trans
 
@@ -57,6 +58,7 @@ class RAMCP(object):
 
         action_values = self.estimateQ(node, idx)
         node.count += 1
+        node.counts[idx] += 1
 
         #Update action_values based on the new samples from estimateQ
         argmax = 0
@@ -64,11 +66,11 @@ class RAMCP(object):
 
         #We sample every action every time, so we need to reweight based on b_adv_cur
         #Importance-sampling-esque
-        w = len(self.envs)*self.b_adv_cur[idx]
+        #w = len(self.envs)*self.b_adv_cur[idx]
 
         for i, (old_val, new_val) in enumerate(zip(node.action_values, action_values)):
             #Weighted Monte Carlo update
-            node.action_values[i] += (w*new_val - old_val)/(node.count)
+            node.action_values[i] += (new_val - old_val)/(node.counts[idx])
             if old_val > cur_max:
                 cur_max = old_val
                 argmax = i           
@@ -113,10 +115,9 @@ class RAMCP(object):
     def step(self):
         self.n_iter += 1
         self.adv_history.append(self.b_adv_avg.copy())
-        for idx in range(len(self.envs)):
-            r = self.estimateV(self.root, idx) 
-            self.V[idx] += (self.greedy_rollout(self.root, idx) - self.V[idx])/self.n_iter
-
+        idx = np.random.choice(range(len(self.envs)), p = self.b_adv_cur)
+        r = self.estimateV(self.root, idx)
+        self.V[idx] += (r - self.V[idx])/self.root.counts[idx]
         self.update_b_adv()
 
     def run(self, n):
@@ -141,11 +142,11 @@ class RAMCP(object):
     def add_nodes(self, node, state, action):
         if node.children[action] is None:
             node.children[action] = ActionNode(self.nS)
-            node.children[action].children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1)
+            node.children[action].children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, n_env = len(self.envs), depth = node.depth + 1)
         else:
             act = node.children[action]
             if act.children[state] is None:
-                act.children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1)
+                act.children[state] = StateNode(tail = state, nS = self.nS, nA = self.nA, n_env = len(self.envs), depth = node.depth + 1)
 
 def walk(node, a):
     for c in node.children:
