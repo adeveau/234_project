@@ -1,3 +1,6 @@
 .project234*
 *.pyc
 paper_qs.txt
+*ipynb
+*mdl
+*.png
