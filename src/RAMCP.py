@@ -66,11 +66,11 @@ class RAMCP(object):
 
         #We sample every action every time, so we need to reweight based on b_adv_cur
         #Importance-sampling-esque
-        #w = len(self.envs)*self.b_adv_cur[idx]
+        w = len(self.envs)*self.b_adv_cur[idx]
 
         for i, (old_val, new_val) in enumerate(zip(node.action_values, action_values)):
             #Weighted Monte Carlo update
-            node.action_values[i] += (new_val - old_val)/(node.counts[idx])
+            node.action_values[i] += (w*new_val - old_val)/(node.counts[idx])
             if old_val > cur_max:
                 cur_max = old_val
                 argmax = i           
@@ -115,9 +115,15 @@ class RAMCP(object):
     def step(self):
         self.n_iter += 1
         self.adv_history.append(self.b_adv_avg.copy())
+        for idx in range(len(self.envs)):
+            r = self.estimateV(self.root, idx) 
+            self.V[idx] += (self.greedy_rollout(self.root, idx) - self.V[idx])/self.n_iter
+
+        """
         idx = np.random.choice(range(len(self.envs)), p = self.b_adv_cur)
         r = self.estimateV(self.root, idx)
-        self.V[idx] += (r - self.V[idx])/self.root.counts[idx]
+        self.V[idx] += (r - self.V[idx])/self.n_iter
+        """   
         self.update_b_adv()
 
     def run(self, n):
