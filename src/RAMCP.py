@@ -7,7 +7,7 @@ import copy
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt 
-from noisy_nchain import NoisyNChainEnv
+#from noisy_nchain import NoisyNChainEnv
 
 
 class StateNode(object):
@@ -49,6 +49,7 @@ class RAMCP(object):
         self.n_trans = n_trans
 
         self.bootstrap = bootstrap
+        self.adv_history = []
 
     def estimateV(self, node, idx):
         if node.depth > self.max_depth:
@@ -111,6 +112,7 @@ class RAMCP(object):
 
     def step(self):
         self.n_iter += 1
+        self.adv_history.append(self.b_adv_avg.copy())
         for idx in range(len(self.envs)):
             r = self.estimateV(self.root, idx) 
             self.V[idx] += (self.greedy_rollout(self.root, idx) - self.V[idx])/self.n_iter
@@ -158,28 +160,15 @@ if __name__ == "__main__":
     np.set_printoptions(precision = 4)
     n = 5
     slip_params = [np.random.random() for x in range(n)]
-    env = [({'slip' : s}, [.98,.01,.01][i]) for (i,s) in enumerate((.1, .2, .3))]
+    env = [({'slip' : s}, [.8,.1,.1][i]) for (i,s) in enumerate((.1, .2, .3))]
 
     st = time.time()
-    no_bootstrap = []
-    bootstrap = []
     n = 1000
 
-    for x in range(100):
-        r_no_bootstrap = RAMCP(env, NoisyNChainEnv, 5, 2, n_trans = 1, max_depth = 7, gamma = 1, bootstrap = False)
-        r_bootstrap = RAMCP(env, NoisyNChainEnv, 5, 2, n_trans = 1, max_depth = 7, gamma = 1, bootstrap = True)
-
-        r_no_bootstrap.run(100)
-        no_bootstrap.append(r_no_bootstrap.b_adv_avg[-1])
-
-        r_bootstrap.run(100)
-        bootstrap.append(r_bootstrap.b_adv_avg[-1])
+    r_no_bootstrap = RAMCP(env, toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 3, gamma = 1, bootstrap = False)
+    r_bootstrap = RAMCP(env, toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 3, gamma = 1, bootstrap = True)
 
 
-    bootstrap, no_bootstrap = np.array(bootstrap), np.array(no_bootstrap)
-
-    print("Bootstrap: {}, {}".format(bootstrap.mean(), bootstrap.std()))
-    print("No bootstrap: {}, {}".format(no_bootstrap.mean(), no_bootstrap.std()))
     """
     fig, ax = plt.subplots()
 
