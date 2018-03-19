@@ -9,6 +9,10 @@ from keras.layers import Input, Dense
 from keras import optimizers
 import keras.backend as K
 
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 class StateNode(object):
     def __init__(self, tail, nS, nA, z, n_envs, depth = 0):
         self.children = [None]*nA
@@ -52,7 +56,7 @@ class RAMCP(object):
         self.n_trans = n_trans
 
         self.model = self.build_model()
-
+        self.adv_history = []
     def estimateV(self, node, idx):
         if node.depth > self.max_depth:
             return 0
@@ -131,6 +135,7 @@ class RAMCP(object):
 
     def step(self):
         self.n_iter += 1
+        self.adv_history.append(self.b_adv_avg.copy())
         for idx in xrange(len(self.envs)):
             r = self.estimateV(self.root, idx) 
             self.V[idx] += (r - self.V[idx])/self.n_iter
@@ -157,9 +162,7 @@ class RAMCP(object):
         return self.model.predict(feature_vec(node))
 
 def feature_vec(node):
-    f = np.zeros(5)
-    f[node.tail] = 1
-    return np.concatenate([f, node.z], axis = 0).reshape((1,7))
+    return np.array([1] + list(node.z)).reshape((1,3))
 
 def walk(node, r):
     if isinstance(node, StateNode):
@@ -172,9 +175,12 @@ def walk(node, r):
 
 if __name__ == "__main__":
     np.set_printoptions(precision = 4)
-    r = RAMCP([({'slip' : 1}, .8), ({'slip' : 0}, .2)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 3, gamma = 1)
+    r = RAMCP([({'slip' : 1}, .8), ({'slip' : 0.0}, .2)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 3, gamma = 1)
     st = time.time()
-    r.run(5000)
+    r.run(500)
+    fig, ax = plt.subplots()
+    ax.plot(range(500), [x[0] for x in r.adv_history])
+    fig.savefig("neural_network_convergence.png")
     print("Runtime: {}".format(time.time() - st))
     print("V: {}".format(r.V))
     print("Adversarial distribution: {}".format(r.b_adv_avg))
