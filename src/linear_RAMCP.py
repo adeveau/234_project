@@ -4,34 +4,52 @@ from scipy import optimize
 from gym.envs import toy_text
 import time
 import copy
-from keras.models import Sequential
-from keras.layers import Input, Dense
-from keras import optimizers
-import keras.backend as K
-
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+#from keras.models import Sequential
+#from keras.layers import Input, Dense
+#from keras import optimizers
+#import keras.backend as K
 
 class StateNode(object):
-    def __init__(self, tail, nS, nA, z, n_envs, depth = 0):
+    def __init__(self, tail, nS, nA, z, n_envs, depth = 0, parent = None):
         self.children = [None]*nA
-#        self.action_values = [0]*nA
+        self.action_values = [0]*nA
         self.depth = depth
         self.count = 0
         self.counts = [0]*n_envs
         self.avg_action_cts = [0]*nA
         self.tail = tail
         self.z = z
+        self.parent = parent
 
     def value(self):
         return max(self.action_values)
 
-class ActionNode(object):
-    def __init__(self, nS):
-        self.children = [None]*nS
+    def history(self):
+        hist = []
+        node = self
+        while node.parent is not None:
+            hist.append(node.tail)
+            node = node.parent
+        return hist[::-1]
 
-class RAMCP_nn(object):
+class ActionNode(object):
+    def __init__(self, nS, tail = None, parent = None):
+        self.children = [None]*nS
+        self.tail = tail
+        self.parent = parent
+
+    def history(self):
+        hist = []
+        node = self
+        while node.parent is not None:
+            hist.append(node.tail)
+            node = node.parent
+        return hist[::-1]
+
+class linear_RAMCP(object):
     def __init__(self, prior, env, nS, nA, max_depth = 10, gamma = .9, s0 = 0, n_trans = 1, lr = .1):
         self.gamma = gamma
         self.nS = nS
@@ -55,9 +73,10 @@ class RAMCP_nn(object):
         self.V  = [0]*len(self.envs)
         self.n_trans = n_trans
 
-        self.model = self.build_model()
+        self.weights = np.zeros(self.feature_vec(self.root, 0).shape)
         self.adv_history = []
-        
+
+
     def estimateV(self, node, idx):
         if node.depth > self.max_depth:
             return 0
@@ -65,31 +84,26 @@ class RAMCP_nn(object):
         node.count += 1
         node.counts[idx] += 1
         action_values = self.estimateQ(node, idx)
-
-        r = np.random.random()
-        if r > .5:
-            argmax = np.argmax(self.computeQ(node))
         
         #We sample every action every time, so we need to reweight based on b_adv_cur
         #Importance-sampling-esque
-        w = len(self.envs)*self.b_adv_cur[idx]
-
-        K.set_value(self.model.optimizer.lr, w*.01)
-        self.model.fit(x = feature_vec(node), y = action_values, verbose = 0)
+        #w = len(self.envs)*self.b_adv_cur[idx]
 
         #Update the action counts to track the average policy
-        
+        for action, action_value in enumerate(action_values):
+            #print(self.weights, self.computeQ(node, action))
+            self.weights += .1*(action_value - self.computeQ(node, action))*self.feature_vec(node, action)
 
-        if r < .5:
-            argmax = np.argmax(self.computeQ(node))
+        argmax = np.argmax([self.computeQ(node, a) for a in range(self.nA)])
         node.avg_action_cts[argmax] += 1
-        return action_values[0, argmax]
+
+        return action_values[argmax]
 
     def estimateQ(self, node, idx):
         cur_env = self.envs[idx]
         new_values = [0]*self.nA
-        for action in xrange(self.nA):
-            for x in xrange(self.n_trans):
+        for action in range(self.nA):
+            for x in range(self.n_trans):
                 #First reset the state so we can sample again
                 cur_env.state = node.tail
 
@@ -110,20 +124,20 @@ class RAMCP_nn(object):
                 v = self.estimateV(next_node, idx)
                 new_values[action] += 1./(self.n_trans) * (reward + self.gamma*v)
 
-        return np.array(new_values).reshape((1,2))
+        return new_values
 
     def add_nodes(self, node, state, action, idx):        
         new_z = np.zeros(len(self.envs))
-        new_z[idx] = node.z[idx]/float(node.counts[idx])
-        next_state_node = StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1, z = new_z, n_envs = len(self.envs))
+        new_z[idx] = node.z[idx]/float(node.counts[idx]+1)
+
         if node.children[action] is None:
-            node.children[action] = ActionNode(self.nS)
-            node.children[action].children[state] = next_state_node
+            node.children[action] = ActionNode(self.nS, parent = node, tail = action)
+            node.children[action].children[state] =  StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1, z = new_z, n_envs = len(self.envs), parent = node.children[action])
             return True
         else:
             act = node.children[action]
             if act.children[state] is None:
-                act.children[state] = next_state_node
+                act.children[state] =  StateNode(tail = state, nS = self.nS, nA = self.nA, depth = node.depth + 1, z = new_z, n_envs = len(self.envs), parent = act)
                 return True
         return False
 
@@ -137,54 +151,51 @@ class RAMCP_nn(object):
     def step(self):
         self.n_iter += 1
         self.adv_history.append(self.b_adv_avg.copy())
-        for idx in xrange(len(self.envs)):
-            r = self.estimateV(self.root, idx) 
-            self.V[idx] += (r - self.V[idx])/self.n_iter
+        idx = np.random.choice(range(len(self.envs)), p = self.b_adv_cur)
+        r = self.estimateV(self.root, idx)
+        for idx in range(len(self.envs)):
+            self.V[idx] += (self.greedy_rollout(self.root, idx) - self.V[idx])/self.n_iter
+
         self.update_b_adv()
         if self.n_iter % 100 == 0:
             self.lr *= .99
 
+
+    def greedy_rollout(self, node, idx):
+        cur_env = self.envs[idx]
+        cur_env.state = node.tail
+        total_reward = 0
+        discount = 1
+        done = False
+        while not done and node.depth < self.max_depth + 1:
+            action = np.argmax([self.computeQ(node, a) for a in range(self.nA)])
+            state, reward, done, _ = cur_env.step(action)
+            total_reward += discount * reward
+            discount *= self.gamma
+            self.add_nodes(node, state, action, idx)
+            node = node.children[action].children[state]
+        return total_reward
+
     def run(self, n):
-        for x in xrange(n):
-            print(x)
+        for x in range(n):
             self.step()
 
-    def build_model(self):
-        model = Sequential()
-        model.add(Dense(32, input_dim = len(self.envs) + self.nS, activation = 'relu'))
-        model.add(Dense(self.nA, input_dim = 32, activation = 'linear'))
 
-        sgd = optimizers.SGD(lr = .01, decay = 0, momentum = 0, nesterov = False)
-        model.compile(loss = 'mean_squared_error', optimizer = sgd)
+    def computeQ(self, node, action):
+        return np.dot(self.weights, self.feature_vec(node, action))
 
-        return model
-
-    def computeQ(self, node):
-        return self.model.predict(feature_vec(node))
-
-def feature_vec(node):
-    return np.array([1] + list(node.z)).reshape((1,3))
+    def feature_vec(self, node, action):
+        return np.array([1] + list(node.z) + [action])
+        f_vec = node.history() + [action]
+        f_vec.extend([0]*(2*self.max_depth + 2 - len(f_vec)))
+        return np.array(f_vec)
 
 def walk(node, r):
-    if isinstance(node, StateNode):
-        print("action values: {}".format(r.computeQ(node)))
+    if isinstance(node, StateNode) and len(r.feature_vec(node, 0) < 9):
+        print("action values: {}".format([r.computeQ(node, a) for a in (0,1)]))
         print( "z :{}".format(node.z))
 
     for c in node.children:
         if c is not None:
             walk(c, r)
-
-if __name__ == "__main__":
-    np.set_printoptions(precision = 4)
-    r = RAMCP([({'slip' : 1}, .8), ({'slip' : 0.0}, .2)], toy_text.NChainEnv, 5, 2, n_trans = 1, max_depth = 3, gamma = 1)
-    st = time.time()
-    r.run(500)
-    fig, ax = plt.subplots()
-    ax.plot(range(500), [x[0] for x in r.adv_history])
-    fig.savefig("neural_network_convergence.png")
-    print("Runtime: {}".format(time.time() - st))
-    print("V: {}".format(r.V))
-    print("Adversarial distribution: {}".format(r.b_adv_avg))
-    print("root values {}".format(r.computeQ(r.root)))
-    #walk(r.root, a)
 
